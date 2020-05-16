@@ -5,10 +5,11 @@ import (
 	"github.com/spf13/cobra"
 	"os"
 )
-var rootCmd = &cobra.Command {
+
+var rootCmd = &cobra.Command{
 	Use:   "go-mitm",
 	Short: "A basic man-in-the-middle proxy for debugging outgoing requests",
-	Run: func(cmd *cobra.Command, args []string) { 
+	Run: func(cmd *cobra.Command, args []string) {
 		mitmMain()
 	},
 }
@@ -18,7 +19,7 @@ var (
 )
 
 func init() {
-	rootCmd.Flags().StringVarP(&port, "port","p", "8080", "Port to listen on")
+	rootCmd.Flags().StringVarP(&port, "port", "p", "8080", "Port to listen on")
 }
 
 // Framework boilerplate

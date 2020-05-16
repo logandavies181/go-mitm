@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"bytes"
-	"fmt"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-httpproxy/httpproxy"
 )
@@ -37,52 +38,62 @@ func OnConnect(ctx *httpproxy.Context, host string) (
 func OnRequest(ctx *httpproxy.Context, req *http.Request) (resp *http.Response) {
 	// Log proxying requests.
 	log.Printf("INFO: Proxy: %s %s", req.Method, req.URL.String())
-	readHeaders(req,"Reqest")
-	err := readBody(req,"Request")
+	readHeaders(req, "Reqest")
+	err := readBody(req, "Request")
 	if err != nil {
 		log.Println(err)
 	}
 	return
 }
 
-func OnResponse(ctx *httpproxy.Context, req *http.Request,resp *http.Response) {
-	//readHeaders(resp,"Response")
-	err := readBody(resp,"Response")
+func OnResponse(ctx *httpproxy.Context, req *http.Request, resp *http.Response) {
+	readHeaders(resp, "Response")
+	err := readBody(resp, "Response")
 	if err != nil {
 		log.Println(err)
 	}
 }
 
 // Reads the headers and dumps to stdout
-func readHeaders(r *http.Request,requestOrResponse string) {
-	log.Printf("INFO: %s headers:\n",requestOrResponse)
-	for k, v := range r.Header {
-		fmt.Println(k, v)
+func readHeaders(r interface{}, requestOrResponse string) {
+	log.Printf("INFO: %s headers:\n", requestOrResponse)
+	dumpHeaders := func(h http.Header) {
+		for k, v := range h {
+			fmt.Printf("%s: %s\n", k, strings.Join(v, ", "))
+		}
+	}
+	switch h := r.(type) {
+	case *http.Request:
+		dumpHeaders(h.Header)
+	case *http.Response:
+		dumpHeaders(h.Header)
+	default:
+		log.Println("ERR: Invalid value passed to readHeaders")
 	}
 }
 
 // Reads the body (if it exists) and dumps to stdout without consuming it
-func readBody(r interface{},requestOrResponse string) error {
+func readBody(r interface{}, requestOrResponse string) error {
 	// req is a pointer so we're actually copying the value here
 	// so we can avoid closing req.Body and messing up the client request
-	dumpBody := func(body io.ReadCloser) ([]byte,error) {
+	dumpBody := func(body io.ReadCloser) ([]byte, error) {
 		//bodyCopy := body
 		bodyDat, err := ioutil.ReadAll(body)
 		if err != nil {
 			// hopefully this doesn't mess up too bad if we return bodyDat as is
-			return bodyDat,err
+			return bodyDat, err
 		}
 		if len(bodyDat) != 0 {
-			log.Printf("INFO: %s body:\n",requestOrResponse)
+			log.Printf("INFO: %s body:\n", requestOrResponse)
 			fmt.Println(string(bodyDat))
 		}
-		return bodyDat,nil
+		return bodyDat, nil
 	}
 	var err error = nil
 	switch v := r.(type) {
 	case *http.Request:
 		// Compiler seems to ignore the err declaration above so use err2 to pass
-		// the returned error 
+		// the returned error
 		bodyData, err2 := dumpBody(v.Body)
 		v.Body = ioutil.NopCloser(bytes.NewReader(bodyData))
 		err = err2
@@ -90,6 +101,8 @@ func readBody(r interface{},requestOrResponse string) error {
 		bodyData, err2 := dumpBody(v.Body)
 		v.Body = ioutil.NopCloser(bytes.NewReader(bodyData))
 		err = err2
+	default:
+		log.Println("ERR: Invalid value passed to readBody")
 	}
 	return err
 }
