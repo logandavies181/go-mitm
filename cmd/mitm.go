@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"crypto/tls"
 	"io"
@@ -37,13 +38,19 @@ func OnRequest(ctx *httpproxy.Context, req *http.Request) (resp *http.Response) 
 	// Log proxying requests.
 	log.Printf("INFO: Proxy: %s %s", req.Method, req.URL.String())
 	readHeaders(req,"Reqest")
-	readBody(req,"Request")
+	err := readBody(req,"Request")
+	if err != nil {
+		log.Println(err)
+	}
 	return
 }
 
 func OnResponse(ctx *httpproxy.Context, req *http.Request,resp *http.Response) {
 	//readHeaders(resp,"Response")
-	readBody(resp,"Response")
+	err := readBody(resp,"Response")
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 // Reads the headers and dumps to stdout
@@ -58,24 +65,33 @@ func readHeaders(r *http.Request,requestOrResponse string) {
 func readBody(r interface{},requestOrResponse string) error {
 	// req is a pointer so we're actually copying the value here
 	// so we can avoid closing req.Body and messing up the client request
+	dumpBody := func(body io.ReadCloser) ([]byte,error) {
+		//bodyCopy := body
+		bodyDat, err := ioutil.ReadAll(body)
+		if err != nil {
+			// hopefully this doesn't mess up too bad if we return bodyDat as is
+			return bodyDat,err
+		}
+		if len(bodyDat) != 0 {
+			log.Printf("INFO: %s body:\n",requestOrResponse)
+			fmt.Println(string(bodyDat))
+		}
+		return bodyDat,nil
+	}
+	var err error = nil
 	switch v := r.(type) {
-	case http.Request:
-		body = v.Body
-	case http.Response:
-		body = v.Body
+	case *http.Request:
+		// Compiler seems to ignore the err declaration above so use err2 to pass
+		// the returned error 
+		bodyData, err2 := dumpBody(v.Body)
+		v.Body = ioutil.NopCloser(bytes.NewReader(bodyData))
+		err = err2
+	case *http.Response:
+		bodyData, err2 := dumpBody(v.Body)
+		v.Body = ioutil.NopCloser(bytes.NewReader(bodyData))
+		err = err2
 	}
-	v := r.(type)
-	reqCopy := *v
-	body := reqCopy.Body
-	bodyDat, err := ioutil.ReadAll(body)
-	if err != nil {
-		return err
-	}
-	if len(bodyDat) != 0 {
-		log.Printf("INFO: %s body:\n",requestOrResponse)
-		fmt.Println(string(bodyDat))
-	}
-	return nil
+	return err
 }
 
 func mitmMain() {
